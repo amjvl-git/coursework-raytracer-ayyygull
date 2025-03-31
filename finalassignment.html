@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="screen" width="400" height="300" style="border:1px solid#000000;"></canvas>
+<script>
+
+
+class Vector3 {
+    constructor(x, y, z) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
+
+    add(other) {
+        return new Vector3(this.x + other.x, this.y + other.y, this.z + other.z);
+    }
+
+    subtract(other) {
+        return new Vector3(this.x - other.x, this.y - other.y, this.z - other.z);
+    }
+
+    scale(factor) {
+        return new Vector3(this.x * factor, this.y * factor, this.z * factor);
+    }
+
+    dot(other) {
+        return this.x * other.x + this.y * other.y + this.z * other.z;
+    }
+
+    magnitude() {
+        return Math.sqrt(this.dot(this));
+    }
+
+    normalize() {
+        let length = this.magnitude();
+        return length === 0 ? new Vector3(0, 0, 0) : this.scale(1 / length);
+    }
+}
+
+class Sphere {
+    constructor(center, radius, color) {
+        this.center = center;
+        this.radius = radius;
+        this.color = color;
+    }
+
+    intersects(ray) {
+        let oc = ray.origin.subtract(this.center);
+        let a = ray.direction.dot(ray.direction);
+        let b = 2 * oc.dot(ray.direction);
+        let c = oc.dot(oc) - this.radius * this.radius;
+        let discriminant = b * b - 4 * a * c;
+
+        if (discriminant < 0) return -1;
+        return (-b - Math.sqrt(discriminant)) / (2 * a);
+    }
+}
+
+
+class Ray {
+    constructor(origin, direction) {
+        this.origin = origin;
+        this.direction = direction.normalize();
+    }
+
+    pointAt(t) {
+        return this.origin.add(this.direction.scale(t));
+    }
+}
+
+
+function trace(ray) {
+    let nearest = Infinity, hitObject = null;
+
+    for (let obj of sceneObjects) {
+        let t = obj.intersects(ray);
+        if (t > 0 && t < nearest) {
+            nearest = t;
+            hitObject = obj;
+        }
+    }
+
+    if (!hitObject) return skyGradient(ray);
+
+    let hitPoint = ray.pointAt(nearest);
+    let normal = hitPoint.subtract(hitObject.center).normalize();
+    return calculateLighting(hitPoint, normal, hitObject.color);
+}
+
+
+function skyGradient(ray) {
+    let u = 0.5 * (ray.direction.x + 1);
+    let v = 0.5 * (ray.direction.y + 1);
+    return new Vector3(u, v, 0.5);
+}
+
+
+function calculateLighting(hitPoint, normal, baseColor) {
+    let lightDir = lightPos.subtract(hitPoint).normalize();
+    let viewDir = cameraPos.subtract(hitPoint).normalize();
+    let reflectDir = lightDir.subtract(normal.scale(2 * normal.dot(lightDir))).normalize();
+
+    let ambient = 0.1;
+    let diffuse = Math.max(normal.dot(lightDir), 0);
+    let specular = Math.pow(Math.max(reflectDir.dot(viewDir), 0), 32);
+
+    return baseColor.scale(ambient + diffuse).add(new Vector3(1, 1, 1).scale(specular));
+}
+
+
+function drawPixel(x, y, color) {
+    let ctx = screen.getContext("2d");
+    let r = Math.floor(Math.min(255, Math.max(0, color.x * 255)));
+    let g = Math.floor(Math.min(255, Math.max(0, color.y * 255)));
+    let b = Math.floor(Math.min(255, Math.max(0, color.z * 255)));
+    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+    ctx.fillRect(x, screen.height - y, 1, 1);
+}
+
+
+const screen = document.getElementById("screen");
+const sceneObjects = [
+    new Sphere(new Vector3(0, 0, -1), 0.3, new Vector3(1, 0, 0)),  // Red sphere
+    new Sphere(new Vector3(0, 0.2, -0.8), 0.15, new Vector3(0, 0, 1)),  // Blue sphere
+    new Sphere(new Vector3(0, -100.5, -1), 100, new Vector3(0, 1, 0)) 
+];
+
+const lightPos = new Vector3(1.1, 1.3, 1.5);
+const cameraPos = new Vector3(0, 0, 0);
+
+let imgWidth = screen.width, imgHeight = screen.height;
+let aspectRatio = imgHeight / imgWidth;
+let viewportWidth = 2, viewportHeight = viewportWidth * aspectRatio, focalLength = 1;
+
+let horizon = new Vector3(viewportWidth, 0, 0);
+let vertical = new Vector3(0, viewportHeight, 0);
+let lowerLeft = cameraPos.subtract(horizon.scale(0.5)).subtract(vertical.scale(0.5)).subtract(new Vector3(0, 0, focalLength));
+
+for (let i = 0; i < imgWidth; i++) {
+    for (let j = 0; j < imgHeight; j++) {
+        let u = i / (imgWidth - 1);
+        let v = j / (imgHeight - 1);
+        let ray = new Ray(cameraPos, lowerLeft.add(horizon.scale(u)).add(vertical.scale(v)).subtract(cameraPos));
+        let color = trace(ray);
+        drawPixel(i, j, color);
+    }
+}
+
+</script>
+</body>
+</html>
